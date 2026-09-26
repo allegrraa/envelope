@@ -1,0 +1,70 @@
+# envelope configuration. All thresholds are ILLUSTRATIVE defaults, not regulatory values.
+seed: 0
+alpha: 0.1                  # miscoverage level; nominal coverage = 1 - alpha
+
+# Which interval method drives the gate: split | adaptive | fragility
+interval_method: split
+
+envelope:
+  k: 5                      # neighbours used for the kNN distance
+  percentile: 95            # percentile of leave-one-out training distances -> threshold
+  pvalue_beta: 0.05         # conformal p-value flag: OUTSIDE if p < beta
+  flag: percentile          # which OUTSIDE flag drives the gate: percentile | pvalue | bh (Benjamini-Hochberg)
+
+gate:
+  tolerance: 0.6            # max interval half-width (target units) for TRUST
+  escalate_score: 1.5       # envelope score (distance / threshold) above which -> ESCALATE_TO_HUMAN
+                            # 1 < score <= escalate_score is "slightly outside" -> RERUN_FULL_SIMULATION
+
+coverage:
+  ci_level: 0.95            # Clopper-Pearson interval level for measured coverage
+  delta: 0.1                # small-sample correction: P(coverage >= 1 - alpha) >= 1 - delta
+  small_sample_correction: false   # if true, calibrate with the corrected alpha'
+
+group_conditional:
+  n_bins: 4                 # quantile bins of the queries' envelope scores
+  min_cal_per_bin: 30       # fewer calibration points in a bin -> global quantile fallback
+
+error_tolerance: 1.0        # |error| (target units) counted as a "large" error for flag precision/recall
+
+surrogate:
+  mlp_hidden: [64, 64]
+  mlp_epochs: 1500
+  mlp_lr: 0.01
+
+fragility:
+  K: 30                     # number of perturbed weight copies
+  tau: 0.02                 # noise norm as a fraction of each layer's weight norm
+  beta: null                # stabiliser in |y - yhat| / (sigma + beta); null -> 0.1 * median calibration sigma
+
+tilt:
+  # Illustrative design choice: higher model risk -> more weight on the worst errors.
+  risk_to_tilt: {low: 0.0, medium: 1.0, high: 3.0}
+  tail_fraction: 0.1        # tail risk = mean of the worst 10% of absolute errors
+  worst_region_bins: 4      # bins per input dimension for worst-region RMSE
+  min_bin_count: 5          # ignore bins with fewer points
+  demo_tilts: [0.0, 2.0, -2.0]
+  demo_corrupt_fraction: 0.05
+
+# Illustrative adequacy rules per model-risk level.
+adequacy:
+  low:
+    max_coverage_gap: 0.10      # |empirical - nominal| coverage (fraction)
+    max_pct_outside: 30.0       # % of queries outside the envelope
+    min_r2: 0.70
+  medium:
+    max_coverage_gap: 0.05
+    max_pct_outside: 15.0
+    min_r2: 0.85
+  high:
+    max_coverage_gap: 0.02
+    max_pct_outside: 5.0
+    min_r2: 0.95
+
+# Declared units and plausible physical bounds used by the verification checks.
+units: {x1: mm, x2: kN, x3: degC, y: MPa}
+bounds:
+  x1: [0.0, 10.0]
+  x2: [0.0, 10.0]
+  x3: [0.0, 10.0]
+  y: [-50.0, 200.0]

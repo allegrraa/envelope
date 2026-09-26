@@ -1,6 +1,16 @@
 # envelope
 
-A validity-envelope and credibility-evidence engine for ML / surrogate models.
+Check whether to use a model's prediction, re-run a simulation, or ask an expert.
+
+**Envelope** checks how familiar an input is and adds a calibrated uncertainty range
+to its prediction. Use the website with synthetic sample data or your own CSVs,
+then download the decisions and a credibility report. An API supports checks from
+your own applications. Simulation re-runs and expert reviews are recommendations;
+the product does not execute or assign them.
+
+**Start here:** [Install and launch](#setup) · [Try the sample assessment](#try-the-product-without-your-own-data)
+· [Run the simulation demo](#run-the-simulation-demo) · [Use your own model](#assess-your-model-what-a-company-does)
+· [API](#api) · [Troubleshooting](#troubleshooting)
 
 Given a surrogate (or just its predictions), `envelope`:
 
@@ -14,25 +24,101 @@ Conformal prediction, the envelope, weight-perturbation fragility and tilted ERM
 
 ## Setup
 
+Use **Python 3.12** (the tested version), Git, and a terminal. No API key, account,
+or external simulator is needed to run the synthetic demo.
+
+Clone the public repository:
+
 ```bash
-python3.12 -m venv .venv            # Python 3.11+
+git clone https://github.com/allegrraa/envelope.git
+cd envelope
+```
+
+On **macOS / Linux**, create and activate an environment:
+
+```bash
+python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
 ```
 
-## Run
+On **Windows PowerShell**, use:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Then install the dependencies and launch the website from the repository folder:
 
 ```bash
-python run_demo.py                      # end-to-end demo; writes ./out/ incl. out/state.npz (about 15 s)
-python run_demo.py --risk high
-pytest                                  # 72 tests, about 35 s
-streamlit run app.py                    # the website: http://localhost:8501
-uvicorn envelope.api:app --port 8000    # REST API (needs out/state.npz from run_demo.py)
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
 ```
+
+Open **http://localhost:8501**. Leave the terminal running while you use the app;
+press **Ctrl+C** to stop it. The first visit to a demo page can take longer because
+the synthetic model is trained and cached if no matching saved model exists.
+
+## Try the product without your own data
+
+1. Open **Assess your model** in the top navigation.
+2. Select **Use sample data**. The app supplies training inputs, held-out calibration
+   examples, and predictions to check from its synthetic simulator.
+3. Keep the default columns and settings for your first run, then click **Run assessment**.
+4. Review **Decisions** for each prediction's range and recommendation, **Coverage**
+   for measured performance, and **Data checks** for input problems.
+5. Open **Report & export** to download the report, decisions CSV, or API state.
+
+“Queries” means **new cases you want assessed**: each row has input values and a
+model prediction. The true outcome is optional; supplying it allows the app to
+measure actual prediction errors and interval coverage.
+
+To explore a single case, open **Interactive example**. Start with `x1 = 3`, then
+move it toward `8` while keeping `x2 = x3 = 2.5`. Watch the model prediction diverge
+from the real simulator response and read the recommendation. Open **Guided tour**
+for the five-stage walkthrough suitable for a short demo video.
+
+An **INSUFFICIENT** report is a valid result: it identifies evidence gaps under the
+selected risk rules. Some individual predictions may still qualify for **Trust**.
+All built-in sample data is synthetic; it does not establish real-world performance.
+
+## Run the simulation demo
+
+This runs a complete local experiment: generate synthetic data, train a surrogate,
+calibrate its uncertainty, assess predictions, and produce plots and reports.
+The simulator is a mathematical function in `envelope/data.py`; it does not require
+commercial simulation software. It changes behaviour beyond `x1 = 5`, outside the
+model's training region, to demonstrate extrapolation failure.
+
+In an activated environment, from the repository folder:
+
+```bash
+python run_demo.py
+```
+
+Optional variants (choose one):
+
+```bash
+python run_demo.py --risk high          # apply the stricter report rules
+python run_demo.py --fast               # fewer training epochs; results will differ
+```
+
+Runtime depends on your machine. When it finishes, inspect:
+
+| Output | How to use it |
+|---|---|
+| `out/report.md` | Read the credibility report and evidence gaps. |
+| `out/queries.csv` | Inspect predictions, intervals, scores, and decisions. |
+| `out/slice.png` | Compare the surrogate with the true simulator. |
+| `out/upload_example/` | Try the generated CSVs in **Assess your model → Upload my files**. |
+| `out/state.npz` | Start the API with the demo's calibration state. |
+| `out/demo_script.md` and `out/frames/` | Use the generated narration and frames for a recording. |
 
 Generated files in `out/` and the local virtual environment are excluded from Git.
 Run `python run_demo.py` after cloning to recreate the demo reports, example CSVs,
 saved model, and API state. The website can also generate its synthetic model on first use.
+
+Run the automated checks with `python -m pytest -q`.
 
 ## The website
 
@@ -66,6 +152,18 @@ saved model, and API state. The website can also generate its synthetic model on
    - the guarantee-validity check;
    - tabs for **Decisions** (filterable, with a reason per row), **Coverage** (including by bin), **Envelope**, and **Data checks**.
 5. **Export** the credibility report (`.md`), the decisions (`.csv`), and an **API state** file (`.npz`) for checking new predictions from your own systems.
+
+Keep the same feature columns and units across all three files, and use the same
+model to produce calibration and query predictions. Calibration examples must be
+held out from model training. With the default neighbour setting, you need more
+than 5 complete training rows; the website requires at least 20 complete calibration
+rows. These are minimum input requirements, not a recommendation for sufficient
+statistical evidence. Include at least one complete query row.
+
+**Model risk level** selects the report's acceptance rules. **Acceptable error**
+sets the maximum interval half-width for Trust, and **Envelope strictness** changes
+the input-familiarity boundary. Coverage assumptions still matter: an input being
+inside the envelope does not certify that its prediction is correct.
 
 Assessments are held in memory for the session. Creating the API-state download briefly writes training and calibration arrays to a temporary directory, which is removed afterwards. Downloads retain the data they contain. There is no database or authentication; public multi-tenant deployment is out of scope.
 
@@ -148,7 +246,24 @@ The chart in the middle is a slice through your point. It shows the real simulat
 
 Below the scorecard, a verdict banner lists what is missing for the chosen risk level. **Generate full report** opens the Markdown report, and **Download report** saves it.
 
-The model is trained once and cached. Each change reruns only calibration, envelope and gate (about 0.1 s) and is cached per setting. Upload mode, fragility and tilt training are not in the UI. They remain available from Python (`envelope.pipeline.run_pipeline`, `run_demo`, `tilt_comparison`) and `run_demo.py`.
+The model is trained once and cached. Settings rerun the assessment and are cached per setting.
+Upload mode is available on **Assess your model**. Fragility and tilt-training experiments
+are available from Python (`envelope.pipeline.run_pipeline`, `run_demo`, `tilt_comparison`)
+and `run_demo.py`.
+
+## Troubleshooting
+
+| Problem | What to do |
+|---|---|
+| A package or `streamlit` cannot be found | Activate `.venv`, install `requirements.txt`, and use `python -m streamlit run app.py`. |
+| The browser does not open automatically | Open `http://localhost:8501` yourself while the server is running. |
+| Port 8501 is already in use | Run `python -m streamlit run app.py --server.port 8502` and open `http://localhost:8502`. |
+| First demo load is slow | Allow the synthetic model to train, or prepare it with `python run_demo.py` before starting the website. |
+| The API returns 503 because its state is missing | Run `python run_demo.py`, or point `ENVELOPE_STATE` at a state downloaded from an assessment. |
+| The API's `/report` returns 404 for a downloaded state | The website exports its report separately; its state file does not bundle a report path. |
+| CSV columns are rejected | Use numeric features, distinct actual/prediction columns, and matching feature and prediction names across the required files. |
+| Changed settings do not match the displayed assessment | Click **Run assessment** again. |
+| Styles or helper-code changes do not appear | Stop Streamlit with Ctrl+C and restart it. |
 
 ## API
 
@@ -160,9 +275,16 @@ The model is trained once and cached. Each change reruns only calibration, envel
 | `POST /assess` | Assessment of one prediction (below) |
 | `GET /report` | The latest credibility report (`text/markdown`), read from disk on each request |
 
-```bash
-uvicorn envelope.api:app --port 8000
+Start the API in one terminal (after generating `out/state.npz`):
 
+```bash
+python -m uvicorn envelope.api:app --port 8000
+```
+
+In a **second terminal**, try these requests. The predictions below are illustrative;
+in your integration, send the output of the same model used during calibration.
+
+```bash
 curl -s localhost:8000/health
 
 curl -s -X POST localhost:8000/assess \
